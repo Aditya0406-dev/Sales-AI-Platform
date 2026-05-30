@@ -1,4 +1,4 @@
-import subprocess; subprocess.run(["pip", "install", "setuptools"])
+import sys, subprocess; subprocess.run([sys.executable, "-m", "pip", "install", "--target", "/home/adminuser/venv/lib/python3.10/site-packages", "setuptools"])
 import json
 import os
 import matplotlib.pyplot as plt
