@@ -67,7 +67,7 @@ with col_ctrl2:
     region_filter = st.selectbox("Select Region:", ["All Regions", "Central", "East", "South", "West"])
 
 with col_ctrl3:
-    year_filter = st.selectbox("Select Year:", ["All Years", "2024", "2025", "2026"])
+    year_filter = st.selectbox("Select Year:", ["All Years", "2014", "2015", "2016", "2017", "2024", "2025", "2026"])
 
 st.caption("Choose forecasting horizon based on business analysis needs.")
 generate_btn = st.button("Generate Forecast")
@@ -78,16 +78,22 @@ generate_btn = st.button("Generate Forecast")
 if uploaded_file is not None:
     df_raw = pd.read_csv(uploaded_file)
     
-    # Secure date conversion block with multi-format fallback parsing
-    if "Order Date" in df_raw.columns:
-        df_raw["Order Date"] = pd.to_datetime(df_raw["Order Date"], errors='coerce')
-        df_raw["Order Date"] = df_raw["Order Date"].ffill().bfill()
-        df_raw["Year"] = df_raw["Order Date"].dt.year.astype(str)
-    elif "Date" in df_raw.columns:
-        df_raw["Date"] = pd.to_datetime(df_raw["Date"], errors='coerce')
-        df_raw["Date"] = df_raw["Date"].ffill().bfill()
-        df_raw["Year"] = df_raw["Date"].dt.year.astype(str)
+    # 1. Parse dates and force a standardized datetime index
+    date_col = None
+    for col in ["Order Date", "Date", "order_date", "date"]:
+        if col in df_raw.columns:
+            date_col = col
+            break
+            
+    if date_col:
+        df_raw[date_col] = pd.to_datetime(df_raw[date_col], errors='coerce')
+        df_raw = df_raw.dropna(subset=[date_col]).sort_values(by=date_col)
+        df_raw["Year"] = df_raw[date_col].dt.year.astype(str)
+    else:
+        st.error("❌ Could not locate a valid Date column in your uploaded CSV file.")
+        st.stop()
 
+    # 2. Filter down based on user selections
     df_filtered = df_raw.copy()
     
     if region_filter != "All Regions" and "Region" in df_filtered.columns:
@@ -97,6 +103,7 @@ if uploaded_file is not None:
         df_filtered = df_filtered[df_filtered["Year"] == year_filter]
 
     if not df_filtered.empty:
+        # Preprocess input matrix for the model
         X_inf = df_filtered.copy()
         if "Sales" in X_inf.columns:
             X_inf = X_inf.drop(columns=["Sales"])
@@ -109,57 +116,99 @@ if uploaded_file is not None:
         X_inf = X_inf[expected_features]
 
         try:
-            # Generate predictions natively using the JSON booster format
+            # Generate raw predictions
             predictions = model.predict(X_inf)
             df_filtered["Predicted_Sales"] = predictions
 
-            # Calculate business metrics
+            # Calculate business metrics for the HTML cards
             total_sales_val = df_filtered["Sales"].sum() if "Sales" in df_filtered.columns else df_filtered["Predicted_Sales"].sum()
             avg_sales_val = df_filtered["Sales"].mean() if "Sales" in df_filtered.columns else df_filtered["Predicted_Sales"].mean()
             highest_sale_val = df_filtered["Sales"].max() if "Sales" in df_filtered.columns else df_filtered["Predicted_Sales"].max()
             lowest_sale_val = df_filtered["Sales"].min() if "Sales" in df_filtered.columns else df_filtered["Predicted_Sales"].min()
 
-            # Map values straight to your standalone Notepad index.html blueprint
+            # Map calculated metrics directly into your standalone index.html blueprint
             if html_template:
                 rendered_html = html_template \
                     .replace("{{TOTAL_SALES}}", f"{total_sales_val:,.2f}") \
                     .replace("{{AVG_SALES}}", f"{avg_sales_val:,.2f}") \
                     .replace("{{HIGHEST_SALE}}", f"{highest_sale_val:,.3f}") \
                     .replace("{{LOWEST_SALE}}", f"{lowest_sale_val:,.2f}")
-                
                 st.markdown(rendered_html, unsafe_allow_html=True)
 
             # ==========================================
-            # SCREENSHOT-MATCHED MATPLOTLIB GRAPH LAYER
+            # DYNAMIC MATPLOTLIB TIME RESAMPLING LAYER
             # ==========================================
             if generate_btn:
                 st.markdown("---")
                 
-                if "Sales" in df_filtered.columns:
+                # Create a specific resampling DataFrame using our true datetime column
+                plot_df = df_filtered[[date_col, "Sales", "Predicted_Sales"]].copy()
+                plot_df.set_index(date_col, inplace=True)
+
+                # Map the dropdown choices to true pandas resampling rules [videos]
+                if "Weekly" in forecast_type:
+                    resample_rule = "W"
+                    title_horizon = "Weekly Aggregated Sales"
+                elif "Monthly" in forecast_type:
+                    resample_rule = "M"
+                    title_horizon = "Monthly Aggregated Sales"
+                else:
+                    resample_rule = "D"
+                    title_horizon = "Daily Sales Forecast"
+
+                # Resample sum to dynamically compress timelines [videos]
+                resampled_df = plot_df.resample(resample_rule).sum()
+
+                if not resampled_df.empty:
                     fig, ax = plt.subplots(figsize=(14, 6), facecolor='white')
                     ax.set_facecolor('white')
 
-                    split_idx = int(len(df_filtered) * 0.8)
-                    hist_slice = df_filtered.iloc[:split_idx]
-                    fore_slice = df_filtered.iloc[split_idx:]
+                    # Split the resampled timeline: 80% past historical, 20% future horizon
+                    split_idx = int(len(resampled_df) * 0.8)
+                    if split_idx < 1:
+                        split_idx = len(resampled_df)
 
-                    ax.plot(hist_slice.index, hist_slice["Sales"], label="Historical Sales", color="#0072B2", linewidth=1.5)
-                    ax.plot(fore_slice.index, fore_slice["Predicted_Sales"], label="Forecast Sales", color="#D55E00", linewidth=1.5)
+                    hist_slice = resampled_df.iloc[:split_idx]
+                    fore_slice = resampled_df.iloc[split_idx-1:] # overlap by 1 element to connect the line visually
 
-                    ax.set_title("Daily Sales Forecast", fontsize=14, fontweight="bold", pad=15)
-                    ax.set_xlabel("Date", fontsize=11, labelpad=10)
-                    ax.set_ylabel("Sales", fontsize=11, labelpad=10)
+                    # Plot Actual Historical Data (Blue Series)
+                    ax.plot(
+                        hist_slice.index, 
+                        hist_slice["Sales"], 
+                        label="Historical Sales", 
+                        color="#0072B2", 
+                        linewidth=2,
+                        marker='o' if len(resampled_df) < 30 else None
+                    )
+
+                    # Plot Forecast Future Data (Orange Series Horizon)
+                    ax.plot(
+                        fore_slice.index, 
+                        fore_slice["Predicted_Sales"], 
+                        label="Forecast Sales", 
+                        color="#D55E00", 
+                        linewidth=2,
+                        linestyle="--",
+                        marker='o' if len(resampled_df) < 30 else None
+                    )
+
+                    # Aesthetics Matching Your Target Image
+                    ax.set_title(title_horizon, fontsize=14, fontweight="bold", pad=15)
+                    ax.set_xlabel("Timeline (Date Hierarchy)", fontsize=11, labelpad=10)
+                    ax.set_ylabel("Sales Volume ($)", fontsize=11, labelpad=10)
                     ax.grid(True, which='both', linestyle='-', color='#CCCCCC', linewidth=0.7)
                     ax.legend(loc="upper right", frameon=True, facecolor='white', edgecolor='#E0E0E0')
+                    
                     plt.xticks(rotation=45, ha='right')
                     plt.tight_layout()
 
+                    # Render figure to web window [videos]
                     st.pyplot(fig)
                     plt.close()
                 else:
-                    st.line_chart(df_filtered["Predicted_Sales"])
+                    st.warning("⚠️ Insufficient timeline frequency density to resample this time view.")
 
         except Exception as e:
-            st.error(f"Inference processing failed: {e}")
+            st.error(f"Inference aggregation processing failed: {e}")
     else:
-        st.warning("⚠️ No data available matching the selected filter options.")
+        st.warning("⚠️ No data available matching the selected filter options. Please adjust your Year dropdown to match the dataset timelines.")
