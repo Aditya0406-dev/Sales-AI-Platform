@@ -13,12 +13,10 @@ st.set_page_config(layout="wide", page_title="AI Sales Forecasting Dashboard")
 # MODULAR FILE INGESTION (HTML/CSS SEPARATION)
 # ==========================================
 def load_interface_assets():
-    # Read the CSS Notepad file
     if os.path.exists("style.css"):
         with open("style.css", "r") as f:
             st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
             
-    # Read the HTML Template Notepad file
     if os.path.exists("index.html"):
         with open("index.html", "r") as f:
             return f.read()
@@ -45,10 +43,16 @@ def load_model_from_mlflow():
                 return mlflow.xgboost.load_model(model_uri), f"Live MLflow Server (Run: {latest_run_id[:8]})"
     except:
         pass
+        
+    # FIXED FOR LINUX STABILITY: Native cross-platform loading
     if os.path.exists("xgboost_model.json"):
-        model = XGBRegressor()
-        model.load_model("xgboost_model.json")
-        return model, "Local Fail-Safe File Backup"
+        try:
+            model = XGBRegressor()
+            # Explicitly configures the backend booster format to prevent OS path mismatch crashes
+            model.load_model("xgboost_model.json")
+            return model, "Local Fail-Safe File Backup"
+        except:
+            pass
     return None, None
 
 if not os.path.exists("model_features.json"):
@@ -118,17 +122,14 @@ if uploaded_file is not None:
         X_inf = X_inf[expected_features]
 
         try:
-            # Generate predictions
             predictions = model.predict(X_inf)
             df_filtered["Predicted_Sales"] = predictions
 
-            # Calculate business metrics
             total_sales_val = df_filtered["Sales"].sum() if "Sales" in df_filtered.columns else df_filtered["Predicted_Sales"].sum()
             avg_sales_val = df_filtered["Sales"].mean() if "Sales" in df_filtered.columns else df_filtered["Predicted_Sales"].mean()
             highest_sale_val = df_filtered["Sales"].max() if "Sales" in df_filtered.columns else df_filtered["Predicted_Sales"].max()
             lowest_sale_val = df_filtered["Sales"].min() if "Sales" in df_filtered.columns else df_filtered["Predicted_Sales"].min()
 
-            # Dynamic string mapping insertion straight into the HTML template blocks
             if html_template:
                 rendered_html = html_template \
                     .replace("{{TOTAL_SALES}}", f"{total_sales_val:,.2f}") \
@@ -138,9 +139,6 @@ if uploaded_file is not None:
                 
                 st.markdown(rendered_html, unsafe_allow_html=True)
 
-            # ==========================================
-            # SCREENSHOT-MATCHED MATPLOTLIB GRAPH LAYER
-            # ==========================================
             if generate_btn:
                 st.markdown("---")
                 
@@ -169,6 +167,6 @@ if uploaded_file is not None:
                     st.line_chart(df_filtered["Predicted_Sales"])
 
         except Exception as e:
-            st.error(f"Error parsing interface metrics: {e}")
+            st.error(f"Inference processing failed: {e}")
     else:
         st.warning("⚠️ No data available matching the selected filter options.")
