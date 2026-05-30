@@ -183,7 +183,7 @@ if uploaded_file is not None:
                     ax.plot(
                         fore_slice.index, 
                         fore_slice["Predicted_Sales"], 
-                        label="Forecast Sales (2024-2026 Horizon)", 
+                        label="Forecast Sales ", 
                         color="#D55E00", 
                         linewidth=2,
                         linestyle="-"
