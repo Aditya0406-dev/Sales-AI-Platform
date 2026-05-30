@@ -1,3 +1,4 @@
+import subprocess; subprocess.run(["pip", "install", "setuptools"])
 import json
 import os
 import matplotlib.pyplot as plt
