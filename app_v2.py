@@ -78,11 +78,14 @@ generate_btn = st.button("Generate Forecast")
 if uploaded_file is not None:
     df_raw = pd.read_csv(uploaded_file)
     
+    # Secure date conversion block with multi-format fallback parsing
     if "Order Date" in df_raw.columns:
-        df_raw["Order Date"] = pd.to_datetime(df_raw["Order Date"])
+        df_raw["Order Date"] = pd.to_datetime(df_raw["Order Date"], errors='coerce')
+        df_raw["Order Date"] = df_raw["Order Date"].ffill().bfill()
         df_raw["Year"] = df_raw["Order Date"].dt.year.astype(str)
     elif "Date" in df_raw.columns:
-        df_raw["Date"] = pd.to_datetime(df_raw["Date"])
+        df_raw["Date"] = pd.to_datetime(df_raw["Date"], errors='coerce')
+        df_raw["Date"] = df_raw["Date"].ffill().bfill()
         df_raw["Year"] = df_raw["Date"].dt.year.astype(str)
 
     df_filtered = df_raw.copy()
