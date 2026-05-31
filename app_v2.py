@@ -1,6 +1,8 @@
 import json
 import os
+import re
 import matplotlib.pyplot as plt
+import mlflow.xgboost
 import numpy as np
 import pandas as pd
 import streamlit as st
@@ -12,26 +14,45 @@ st.set_page_config(layout="wide", page_title="AI Sales Forecasting Dashboard")
 # MODULAR FILE INGESTION (HTML/CSS SEPARATION)
 # ==========================================
 def load_interface_assets():
+    # Read the CSS file
     if os.path.exists("style.css"):
         with open("style.css", "r") as f:
             st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
             
+    # Read the HTML Template file
     if os.path.exists("index.html"):
         with open("index.html", "r") as f:
-            return f.read()
+            content = f.read()
+            # Forcefully remove any HTML comments that cause plain-text rendering issues
+            clean_content = re.sub(r"<!--.*?-->", "", content, flags=re.DOTALL)
+            return clean_content.strip()
     return ""
 
 html_template = load_interface_assets()
 
 # ==========================================
-# BACKEND CORE INTEGRATION (PRODUCTION METADATA)
+# BACKEND CORE INTEGRATION
 # ==========================================
 @st.cache_resource
-def load_production_model():
+def load_model_from_mlflow():
+    try:
+        experiment = mlflow.get_experiment_by_name("sales_forecasting")
+        if experiment is not None:
+            runs = mlflow.search_runs(
+                experiment_ids=[experiment.experiment_id],
+                order_by=["attributes.start_time DESC"],
+                max_results=1,
+            )
+            if not runs.empty:
+                latest_run_id = runs.iloc[0]["run_id"]
+                model_uri = f"runs:/{latest_run_id}/model"
+                return mlflow.xgboost.load_model(model_uri), f"Live MLflow Server (Run: {latest_run_id[:8]})"
+    except:
+        pass
     if os.path.exists("xgboost_model.json"):
         model = XGBRegressor()
         model.load_model("xgboost_model.json")
-        return model, "Run ID: xgb-prod-8a1c (Active)"
+        return model, "Local Fail-Safe File Backup"
     return None, None
 
 if not os.path.exists("model_features.json"):
@@ -41,20 +62,15 @@ if not os.path.exists("model_features.json"):
 with open("model_features.json", "r") as f:
     expected_features = json.load(f)
 
-model, model_metadata = load_production_model()
+model, connection_source = load_model_from_mlflow()
 if model is None:
     st.error("Could not load the model artifact.")
     st.stop()
 
-# ==========================================
-# LIVE PRODUCTION MLOPS VERIFICATION PANEL
-# ==========================================
-st.sidebar.success("✅ Backend Connected Via: Live MLflow Server API")
-st.sidebar.info(f"📁 Active Registry Asset: `{model_metadata}`")
-st.sidebar.caption("📊 Autologging Status: Active (Metrics logged: MAE, RMSE, Hyperparameters)")
+st.sidebar.success(f"Connected Via: {connection_source}")
 
 # ==========================================
-# INTERFACE CONTROL DROPDOWNS
+# INTERFACE CONTROL ROWS
 # ==========================================
 uploaded_file = st.file_uploader("Upload CSV File:", type="csv")
 
@@ -67,11 +83,10 @@ with col_ctrl2:
     region_filter = st.selectbox("Select Region:", ["All Regions", "Central", "East", "South", "West"])
 
 with col_ctrl3:
-    # REFIXED: Year filter strictly shows historical periods present in the training set
-    year_filter = st.selectbox("Select Historical Training Year:", ["All Years", "2014", "2015", "2016", "2017"])
+    year_filter = st.selectbox("Select Year:", ["All Years", "2024", "2025", "2026"])
 
 st.caption("Choose forecasting horizon based on business analysis needs.")
-generate_btn = st.button("Generate Forecast")
+generate_btn = st.button("Generate Forecast", type="primary")
 
 # ==========================================
 # CORE INFERENCE & RENDERING ENGINE
@@ -79,22 +94,13 @@ generate_btn = st.button("Generate Forecast")
 if uploaded_file is not None:
     df_raw = pd.read_csv(uploaded_file)
     
-    # Parse dates and force a standardized datetime index
-    date_col = None
-    for col in ["Order Date", "Date", "order_date", "date"]:
-        if col in df_raw.columns:
-            date_col = col
-            break
-            
-    if date_col:
-        df_raw[date_col] = pd.to_datetime(df_raw[date_col], errors='coerce')
-        df_raw = df_raw.dropna(subset=[date_col]).sort_values(by=date_col)
-        df_raw["Year"] = df_raw[date_col].dt.year.astype(str)
-    else:
-        st.error("❌ Could not locate a valid Date column in your uploaded CSV file.")
-        st.stop()
+    if "Order Date" in df_raw.columns:
+        df_raw["Order Date"] = pd.to_datetime(df_raw["Order Date"])
+        df_raw["Year"] = df_raw["Order Date"].dt.year.astype(str)
+    elif "Date" in df_raw.columns:
+        df_raw["Date"] = pd.to_datetime(df_raw["Date"])
+        df_raw["Year"] = df_raw["Date"].dt.year.astype(str)
 
-    # Filter down based on user selections
     df_filtered = df_raw.copy()
     
     if region_filter != "All Regions" and "Region" in df_filtered.columns:
@@ -104,7 +110,6 @@ if uploaded_file is not None:
         df_filtered = df_filtered[df_filtered["Year"] == year_filter]
 
     if not df_filtered.empty:
-        # Preprocess input matrix for the model
         X_inf = df_filtered.copy()
         if "Sales" in X_inf.columns:
             X_inf = X_inf.drop(columns=["Sales"])
@@ -121,88 +126,74 @@ if uploaded_file is not None:
             predictions = model.predict(X_inf)
             df_filtered["Predicted_Sales"] = predictions
 
-            # Calculate metrics for HTML template
+            # Calculate business metrics
             total_sales_val = df_filtered["Sales"].sum() if "Sales" in df_filtered.columns else df_filtered["Predicted_Sales"].sum()
             avg_sales_val = df_filtered["Sales"].mean() if "Sales" in df_filtered.columns else df_filtered["Predicted_Sales"].mean()
             highest_sale_val = df_filtered["Sales"].max() if "Sales" in df_filtered.columns else df_filtered["Predicted_Sales"].max()
             lowest_sale_val = df_filtered["Sales"].min() if "Sales" in df_filtered.columns else df_filtered["Predicted_Sales"].min()
 
+            # Dynamic string mapping insertion straight into the HTML template blocks
             if html_template:
-                rendered_html = html_template \
-                    .replace("{{TOTAL_SALES}}", f"{total_sales_val:,.2f}") \
-                    .replace("{{AVG_SALES}}", f"{avg_sales_val:,.2f}") \
-                    .replace("{{HIGHEST_SALE}}", f"{highest_sale_val:,.3f}") \
+                rendered_html = (
+                    html_template
+                    .replace("{{TOTAL_SALES}}", f"{total_sales_val:,.2f}")
+                    .replace("{{AVG_SALES}}", f"{avg_sales_val:,.2f}")
+                    .replace("{{HIGHEST_SALE}}", f"{highest_sale_val:,.2f}")
                     .replace("{{LOWEST_SALE}}", f"{lowest_sale_val:,.2f}")
+                )
+                
+                # Render using standard markdown with explicit HTML configuration enabled
                 st.markdown(rendered_html, unsafe_allow_html=True)
 
             # ==========================================
-            # DYNAMIC MATPLOTLIB TIME FORECAST LAYER
+            # ALWAYS VISIBLE MAIN WORKSPACE WITH SUB-TABS
             # ==========================================
-            if generate_btn:
-                st.markdown("---")
-                
-                plot_df = df_filtered[[date_col, "Sales", "Predicted_Sales"]].copy()
-                plot_df.set_index(date_col, inplace=True)
-
-                if "Weekly" in forecast_type:
-                    resample_rule = "W"
-                    title_horizon = "Weekly Aggregated Sales Forecast"
-                elif "Monthly" in forecast_type:
-                    resample_rule = "M"
-                    title_horizon = "Monthly Aggregated Sales Forecast"
-                else:
-                    resample_rule = "D"
-                    title_horizon = "Daily Sales Forecast"
-
-                resampled_df = plot_df.resample(resample_rule).sum()
-
-                if not resampled_df.empty:
-                    fig, ax = plt.subplots(figsize=(14, 6), facecolor='white')
+            st.markdown("---")
+            st.subheader(f"📊 Workspace Dashboard: {region_filter} ({forecast_type})")
+            
+            tab1, tab2 = st.tabs(["📉 Forecast Trends", "📋 Summary Metrics"])
+            
+            with tab1:
+                st.markdown("#### Predictive Modeling Timeline View")
+                if "Sales" in df_filtered.columns:
+                    fig, ax = plt.subplots(figsize=(14, 5), facecolor='white')
                     ax.set_facecolor('white')
 
-                    # --- PROPER HORIZON SPLIT ---
-                    # 80% is mapped as past historical actuals
-                    # The final 20% extends out continuously to represent the future projection horizon
-                    split_idx = int(len(resampled_df) * 0.8)
-                    if split_idx < 1:
-                        split_idx = len(resampled_df)
+                    split_idx = int(len(df_filtered) * 0.8)
+                    hist_slice = df_filtered.iloc[:split_idx]
+                    fore_slice = df_filtered.iloc[split_idx:]
 
-                    hist_slice = resampled_df.iloc[:split_idx]
-                    fore_slice = resampled_df.iloc[split_idx-1:] 
+                    ax.plot(hist_slice.index, hist_slice["Sales"], label="Historical Sales", color="#0072B2", linewidth=1.5)
+                    ax.plot(fore_slice.index, fore_slice["Predicted_Sales"], label="Forecast Predictions", color="#D55E00", linewidth=1.5)
 
-                    # Historical Sales Line (Blue)
-                    ax.plot(
-                        hist_slice.index, 
-                        hist_slice["Sales"], 
-                        label="Historical Sales", 
-                        color="#0072B2", 
-                        linewidth=2
-                    )
-
-                    # Forecast Future Sales Horizon Line (Orange)
-                    ax.plot(
-                        fore_slice.index, 
-                        fore_slice["Predicted_Sales"], 
-                        label="Forecast Sales ", 
-                        color="#D55E00", 
-                        linewidth=2,
-                        linestyle="-"
-                    )
-
-                    # Aesthetics Matching Your Target Screenshot
-                    ax.set_title(title_horizon, fontsize=14, fontweight="bold", pad=15)
-                    ax.set_xlabel("Date Horizon (Timeline)", fontsize=11, labelpad=10)
-                    ax.set_ylabel("Sales Volume ($)", fontsize=11, labelpad=10)
-                    ax.grid(True, which='both', linestyle='-', color='#CCCCCC', linewidth=0.7)
-                    ax.legend(loc="upper right", frameon=True, facecolor='white', edgecolor='#E0E0E0')
-                    
+                    ax.set_title(f"{forecast_type} Trend Chart", fontsize=12, fontweight="bold")
+                    ax.set_xlabel("Timeline Index")
+                    ax.set_ylabel("Sales Volume")
+                    ax.grid(True, linestyle='-', color='#CCCCCC', linewidth=0.5)
+                    ax.legend(loc="upper right")
                     plt.xticks(rotation=45, ha='right')
                     plt.tight_layout()
 
                     st.pyplot(fig)
                     plt.close()
+                else:
+                    st.line_chart(df_filtered["Predicted_Sales"])
+            
+            with tab2:
+                st.markdown("#### Key Filtered Record Highlights")
+                col_m1, col_m2, col_m3, col_m4 = st.columns(4)
+                
+                col_m1.metric(label="Total Aggregated Sales", value=f"${total_sales_val:,.2f}")
+                col_m2.metric(label="Average Order Sales", value=f"${avg_sales_val:,.2f}")
+                col_m3.metric(label="Peak Record Transaction", value=f"${highest_sale_val:,.2f}")
+                col_m4.metric(label="Minimum Floor Value", value=f"${lowest_sale_val:,.2f}")
+                
+                st.markdown("##### Raw Records Preview")
+                st.dataframe(df_filtered[["Year", "Predicted_Sales"]].head(10), use_container_width=True)
 
         except Exception as e:
-            st.error(f"Inference aggregation processing failed: {e}")
+            st.error(f"Error parsing interface metrics: {e}")
     else:
         st.warning("⚠️ No data available matching the selected filter options.")
+else:
+    st.info("💡 Please upload a CSV file to automatically generate the analytics workspace dashboards.")
