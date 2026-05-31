@@ -1,27 +1,14 @@
-<!-- Structural Template matching your original dashboard layout -->
-<div class="dashboard-container">
-    <div class="main-title">AI SALES FORECASTING DASHBOARD</div>
-    
-    <!-- Sidebar metric card slots -->
-    <div class="metrics-panel">
-        <div class="metric-card">
-            <div class="metric-label">Total Sales</div>
-            <div class="metric-value">{{TOTAL_SALES}}</div>
-        </div>
-        
-        <div class="metric-card">
-            <div class="metric-label">Average Sales</div>
-            <div class="metric-value">{{AVG_SALES}}</div>
-        </div>
-        
-        <div class="metric-card">
-            <div class="metric-label">Highest Sale</div>
-            <div class="metric-value">{{HIGHEST_SALE}}</div>
-        </div>
-        
-        <div class="metric-card">
-            <div class="metric-label">Lowest Sale</div>
-            <div class="metric-value">{{LOWEST_SALE}}</div>
-        </div>
+<div class="metrics-panel" style="display: flex; gap: 20px; justify-content: flex-start; padding: 10px 0; font-family: sans-serif;">
+    <div class="metric-card" style="background-color: #f8f9fa; border: 1px solid #e9ecef; border-radius: 8px; padding: 15px 25px; min-width: 220px; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
+        <div class="metric-label" style="font-size: 13px; color: #6c757d; text-transform: uppercase; font-weight: 600; letter-spacing: 0.5px;">Total AI Predicted Sales</div>
+        <div class="metric-value" style="font-size: 24px; color: #212529; font-weight: bold; margin-top: 5px;">{{TOTAL_SALES}}</div>
+    </div>
+    <div class="metric-card" style="background-color: #f8f9fa; border: 1px solid #e9ecef; border-radius: 8px; padding: 15px 25px; min-width: 220px; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
+        <div class="metric-label" style="font-size: 13px; color: #6c757d; text-transform: uppercase; font-weight: 600; letter-spacing: 0.5px;">Average AI Forecast</div>
+        <div class="metric-value" style="font-size: 24px; color: #212529; font-weight: bold; margin-top: 5px;">{{AVG_SALES}}</div>
+    </div>
+    <div class="metric-card" style="background-color: #f8f9fa; border: 1px solid #e9ecef; border-radius: 8px; padding: 15px 25px; min-width: 220px; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
+        <div class="metric-label" style="font-size: 13px; color: #6c757d; text-transform: uppercase; font-weight: 600; letter-spacing: 0.5px;">Highest Predicted Sale Point</div>
+        <div class="metric-value" style="font-size: 24px; color: #212529; font-weight: bold; margin-top: 5px;">{{MAX_SALES}}</div>
     </div>
 </div>
