@@ -2,7 +2,6 @@ import json
 import os
 import re
 import matplotlib.pyplot as plt
-import mlflow.xgboost
 import numpy as np
 import pandas as pd
 import streamlit as st
@@ -14,16 +13,13 @@ st.set_page_config(layout="wide", page_title="AI Sales Forecasting Dashboard")
 # MODULAR FILE INGESTION (HTML/CSS SEPARATION)
 # ==========================================
 def load_interface_assets():
-    # Read the CSS file
     if os.path.exists("style.css"):
         with open("style.css", "r") as f:
             st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
             
-    # Read the HTML Template file
     if os.path.exists("index.html"):
         with open("index.html", "r") as f:
             content = f.read()
-            # Forcefully remove any HTML comments that cause plain-text rendering issues
             clean_content = re.sub(r"<!--.*?-->", "", content, flags=re.DOTALL)
             return clean_content.strip()
     return ""
@@ -31,24 +27,10 @@ def load_interface_assets():
 html_template = load_interface_assets()
 
 # ==========================================
-# BACKEND CORE INTEGRATION
+# BACKEND CORE INTEGRATION (FAIL-SAFE LOCAL ONLY)
 # ==========================================
 @st.cache_resource
-def load_model_from_mlflow():
-    try:
-        experiment = mlflow.get_experiment_by_name("sales_forecasting")
-        if experiment is not None:
-            runs = mlflow.search_runs(
-                experiment_ids=[experiment.experiment_id],
-                order_by=["attributes.start_time DESC"],
-                max_results=1,
-            )
-            if not runs.empty:
-                latest_run_id = runs.iloc[0]["run_id"]
-                model_uri = f"runs:/{latest_run_id}/model"
-                return mlflow.xgboost.load_model(model_uri), f"Live MLflow Server (Run: {latest_run_id[:8]})"
-    except:
-        pass
+def load_model_local():
     if os.path.exists("xgboost_model.json"):
         model = XGBRegressor()
         model.load_model("xgboost_model.json")
@@ -62,7 +44,7 @@ if not os.path.exists("model_features.json"):
 with open("model_features.json", "r") as f:
     expected_features = json.load(f)
 
-model, connection_source = load_model_from_mlflow()
+model, connection_source = load_model_local()
 if model is None:
     st.error("Could not load the model artifact.")
     st.stop()
@@ -141,8 +123,6 @@ if uploaded_file is not None:
                     .replace("{{HIGHEST_SALE}}", f"{highest_sale_val:,.2f}")
                     .replace("{{LOWEST_SALE}}", f"{lowest_sale_val:,.2f}")
                 )
-                
-                # Render using standard markdown with explicit HTML configuration enabled
                 st.markdown(rendered_html, unsafe_allow_html=True)
 
             # ==========================================
