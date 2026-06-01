@@ -91,7 +91,7 @@ if generate_btn:
             if forecast_type == "Daily Forecast":
                 ax.plot(df_daily["Display_Date"], df_daily["Sales"], label="Historical Sales Actuals", color="#0072B2", alpha=0.5, linewidth=1)
                 # Enhanced: Added higher linewidth, subtle marker points, and a prominent dash style
-                ax.plot(df_future["Predicted_Date"], df_future["Predicted_Sales"], label="AI Daily Forecast", color="#D55E00", linewidth=2.5, linestyle="-")
+                ax.plot(df_future["Predicted_Date"], df_future["Predicted_Sales"], label="AI Daily Forecast", color="#D55E00", linewidth=1.5, linestyle="-")
             elif forecast_type == "Monthly Forecast":
                 df_m = df_daily.groupby(pd.Grouper(key='Display_Date', freq='M'))['Sales'].sum().reset_index()
                 ax.plot(df_m["Display_Date"], df_m["Sales"], label="Historical (Monthly)", color="#0072B2", marker="o", alpha=0.6)
