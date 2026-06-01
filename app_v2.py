@@ -8,12 +8,13 @@ st.set_page_config(layout="wide", page_title="AI Sales Forecasting Dashboard")
 
 with st.sidebar:
     st.success("App Status: Operational & Stable")
-    JSON_MODEL_PATH = "model.json"
+    # Updated to match your GitHub file name
+    JSON_MODEL_PATH = "model_features.json" 
     has_json = os.path.exists(JSON_MODEL_PATH)
     if has_json:
         st.success(f"🤖 Model Loaded: {JSON_MODEL_PATH}")
     else:
-        st.warning("⚠️ model.json missing. Using fallback engine.")
+        st.warning(f"⚠️ {JSON_MODEL_PATH} missing. Using fallback engine.")
     st.info("Deployment: GitHub Main Branch")
 
 st.title("📊 Workspace Dashboard: AI Engine Hub")
