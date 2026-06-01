@@ -8,7 +8,6 @@ st.set_page_config(layout="wide", page_title="AI Sales Forecasting Dashboard")
 
 with st.sidebar:
     st.success("App Status: Operational & Stable")
-    # Updated to match your GitHub file name
     JSON_MODEL_PATH = "model_features.json" 
     has_json = os.path.exists(JSON_MODEL_PATH)
     if has_json:
@@ -57,19 +56,32 @@ if generate_btn:
     if has_json:
         try:
             with open(JSON_MODEL_PATH, "r") as f: model_data = json.load(f)
-            if isinstance(model_data, list): base_pred = model_data[:steps]
-            elif "predictions" in model_data: base_pred = model_data["predictions"][:steps]
+            
+            # Extract out the array raw contents
+            raw_preds = []
+            if isinstance(model_data, list): raw_preds = model_data[:steps]
+            elif "predictions" in model_data: raw_preds = model_data["predictions"][:steps]
             elif "coefficient" in model_data and "intercept" in model_data:
-                base_pred = [float(model_data["coefficient"] * x + model_data["intercept"]) for x in range(1, steps + 1)]
-            if len(base_pred) < steps: base_pred.extend([historical_daily_avg * 1.05] * (steps - len(base_pred)))
-        except Exception: has_json = False
+                raw_preds = [float(model_data["coefficient"] * x + model_data["intercept"]) for x in range(1, steps + 1)]
+            
+            # Safeguard: Convert extracted items directly to float numbers
+            base_pred = [float(x) for x in raw_preds if x is not None]
+            
+            if len(base_pred) < steps: 
+                base_pred.extend([historical_daily_avg * 1.05] * (steps - len(base_pred)))
+        except Exception: 
+            has_json = False
 
     if not has_json or not base_pred:
-        if forecast_type == "Daily Forecast": base_pred = np.random.uniform(historical_daily_avg * 0.85, historical_daily_avg * 1.15, size=steps)
-        elif forecast_type == "Monthly Forecast": base_pred = np.random.uniform(historical_daily_avg * 30.4 * 0.9, historical_daily_avg * 30.4 * 1.1, size=steps)
-        else: base_pred = np.random.uniform(historical_daily_avg * 365.25 * 0.92, historical_daily_avg * 365.25 * 1.08, size=steps)
+        if forecast_type == "Daily Forecast": base_pred = np.random.uniform(historical_daily_avg * 0.85, historical_daily_avg * 1.15, size=steps).tolist()
+        elif forecast_type == "Monthly Forecast": base_pred = np.random.uniform(historical_daily_avg * 30.4 * 0.9, historical_daily_avg * 30.4 * 1.1, size=steps).tolist()
+        else: base_pred = np.random.uniform(historical_daily_avg * 365.25 * 0.92, historical_daily_avg * 365.25 * 1.08, size=steps).tolist()
         
     df_future = pd.DataFrame({"Predicted_Date": future_dates, "Predicted_Sales": base_pred})
+    
+    # Extra protection layer: Explicitly cast pandas series to numeric values before mathematical execution
+    df_future["Predicted_Sales"] = pd.to_numeric(df_future["Predicted_Sales"], errors='coerce').fillna(historical_daily_avg)
+
     total_val, avg_val, max_val = f"${df_future['Predicted_Sales'].sum():,.2f}", f"${df_future['Predicted_Sales'].mean():,.2f}", f"${df_future['Predicted_Sales'].max():,.2f}"
 
     main_tab1, main_tab2, main_tab3 = st.tabs(["📈 Forecast Trends", "📊 Summary Metrics", "⚙️ System Status"])
@@ -102,7 +114,7 @@ if generate_btn:
         with sub_tab_cards:
             if os.path.exists("index.html"):
                 with open("index.html", "r", encoding="utf-8") as f: html_content = f.read()
-                st.markdown(html_content.replace("{{TOTAL_SALES}}", total_val).replace("{{AVG_SALES}}", avg_val).replace("{{MAX_SALES}}", max_val), unsafe_allow_html=True)
+                st.markdown(html_content.replace("{{TOTAL_SALES}}", total_val).replace("{{AVG_SALES}}", avg_val).replace("{{MAX_SALES}}", max_val), unsafe_allow_allow_html=True)
             else:
                 st.metric("Total Predicted Vol", total_val); st.metric("Average Forecast", avg_val)
         with sub_tab_stats:
