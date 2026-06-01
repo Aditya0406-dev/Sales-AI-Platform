@@ -114,7 +114,7 @@ if generate_btn:
         with sub_tab_cards:
             if os.path.exists("index.html"):
                 with open("index.html", "r", encoding="utf-8") as f: html_content = f.read()
-                st.markdown(html_content.replace("{{TOTAL_SALES}}", total_val).replace("{{AVG_SALES}}", avg_val).replace("{{MAX_SALES}}", max_val), unsafe_allow_allow_html=True)
+                st.markdown(html_content.replace("{{TOTAL_SALES}}", total_val).replace("{{AVG_SALES}}", avg_val).replace("{{MAX_SALES}}", max_val), unsafe_allow_html=True)
             else:
                 st.metric("Total Predicted Vol", total_val); st.metric("Average Forecast", avg_val)
         with sub_tab_stats:
