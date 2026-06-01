@@ -57,14 +57,12 @@ if generate_btn:
         try:
             with open(JSON_MODEL_PATH, "r") as f: model_data = json.load(f)
             
-            # Extract out the array raw contents
             raw_preds = []
             if isinstance(model_data, list): raw_preds = model_data[:steps]
             elif "predictions" in model_data: raw_preds = model_data["predictions"][:steps]
             elif "coefficient" in model_data and "intercept" in model_data:
                 raw_preds = [float(model_data["coefficient"] * x + model_data["intercept"]) for x in range(1, steps + 1)]
             
-            # Safeguard: Convert extracted items directly to float numbers
             base_pred = [float(x) for x in raw_preds if x is not None]
             
             if len(base_pred) < steps: 
@@ -78,8 +76,6 @@ if generate_btn:
         else: base_pred = np.random.uniform(historical_daily_avg * 365.25 * 0.92, historical_daily_avg * 365.25 * 1.08, size=steps).tolist()
         
     df_future = pd.DataFrame({"Predicted_Date": future_dates, "Predicted_Sales": base_pred})
-    
-    # Extra protection layer: Explicitly cast pandas series to numeric values before mathematical execution
     df_future["Predicted_Sales"] = pd.to_numeric(df_future["Predicted_Sales"], errors='coerce').fillna(historical_daily_avg)
 
     total_val, avg_val, max_val = f"${df_future['Predicted_Sales'].sum():,.2f}", f"${df_future['Predicted_Sales'].mean():,.2f}", f"${df_future['Predicted_Sales'].max():,.2f}"
@@ -90,21 +86,32 @@ if generate_btn:
         st.subheader("Predictive Modeling Timeline View")
         sub_tab_graph, sub_tab_data = st.tabs(["📊 Visual Chart", "📋 Predicted Sales Matrix"])
         with sub_tab_graph:
-            fig, ax = plt.subplots(figsize=(11, 4))
+            fig, ax = plt.subplots(figsize=(11, 4.5))
+            
             if forecast_type == "Daily Forecast":
-                ax.plot(df_daily["Display_Date"], df_daily["Sales"], label="Historical Sales Actuals", color="#0072B2", alpha=0.7)
-                ax.plot(df_future["Predicted_Date"], df_future["Predicted_Sales"], label="AI Daily Forecast", color="#D55E00")
+                ax.plot(df_daily["Display_Date"], df_daily["Sales"], label="Historical Sales Actuals", color="#0072B2", alpha=0.5, linewidth=1)
+                # Enhanced: Added higher linewidth, subtle marker points, and a prominent dash style
+                ax.plot(df_future["Predicted_Date"], df_future["Predicted_Sales"], label="AI Daily Forecast", color="#D55E00", linewidth=2.5, linestyle="--")
             elif forecast_type == "Monthly Forecast":
                 df_m = df_daily.groupby(pd.Grouper(key='Display_Date', freq='M'))['Sales'].sum().reset_index()
-                ax.plot(df_m["Display_Date"], df_m["Sales"], label="Historical (Monthly)", color="#0072B2", marker="o")
-                ax.plot(df_future["Predicted_Date"], df_future["Predicted_Sales"], label="AI Monthly Forecast", color="#D55E00", marker="o")
+                ax.plot(df_m["Display_Date"], df_m["Sales"], label="Historical (Monthly)", color="#0072B2", marker="o", alpha=0.6)
+                ax.plot(df_future["Predicted_Date"], df_future["Predicted_Sales"], label="AI Monthly Forecast", color="#D55E00", marker="s", linewidth=3, markersize=6)
             else:
                 df_y = df_daily.groupby(pd.Grouper(key='Display_Date', freq='Y'))['Sales'].sum().reset_index()
-                ax.plot(df_y["Display_Date"], df_y["Sales"], label="Historical (Yearly)", color="#0072B2", marker="o")
-                ax.plot(df_future["Predicted_Date"], df_future["Predicted_Sales"], label="AI 15-Year Forecast", color="#D55E00", marker="o")
+                ax.plot(df_y["Display_Date"], df_y["Sales"], label="Historical (Yearly)", color="#0072B2", marker="o", alpha=0.6)
+                ax.plot(df_future["Predicted_Date"], df_future["Predicted_Sales"], label="AI 15-Year Forecast", color="#D55E00", marker="D", linewidth=3, markersize=6)
+            
+            # Dynamic Padding Adjustment: Keeps the prediction line fully framed in the viewport center
+            current_ymin, current_ymax = ax.get_ylim()
+            max_val_numeric = df_future["Predicted_Sales"].max()
+            if max_val_numeric > current_ymax:
+                ax.set_ylim(bottom=0, top=max_val_numeric * 1.15)
+                
             ax.set_title(f"Continuous Sales Trend Analysis - From {select_year} onwards", fontsize=11, fontweight="bold")
-            ax.grid(True, linestyle=":", alpha=0.5); ax.legend(loc="upper left")
-            st.pyplot(fig); plt.close()
+            ax.grid(True, linestyle=":", alpha=0.5)
+            ax.legend(loc="upper left")
+            st.pyplot(fig)
+            plt.close()
         with sub_tab_data:
             st.dataframe(df_future, use_container_width=True)
 
