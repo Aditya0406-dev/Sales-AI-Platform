@@ -90,7 +90,7 @@ if generate_btn:
             
             if forecast_type == "Daily Forecast":
                 ax.plot(df_daily["Display_Date"], df_daily["Sales"], label="Historical Sales Actuals", color="#0072B2", alpha=0.5, linewidth=1)
-                ax.plot(df_future["Predicted_Date"], df_future["Predicted_Sales"], label="AI Daily Forecast", color="#D55E00", linewidth=1, linestyle="--")
+                ax.plot(df_future["Predicted_Date"], df_future["Predicted_Sales"], label="AI Daily Forecast", color="#D55E00", linewidth=3, linestyle="-")
                 ax.set_title(f"Daily Sales Trend Analysis - From {select_year} onwards", fontsize=11, fontweight="bold")
             
             elif forecast_type == "Monthly Forecast":
