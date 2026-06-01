@@ -90,28 +90,28 @@ if generate_btn:
             
             if forecast_type == "Daily Forecast":
                 ax.plot(df_daily["Display_Date"], df_daily["Sales"], label="Historical Sales Actuals", color="#0072B2", alpha=0.5, linewidth=1)
-                # Enhanced: Added higher linewidth, subtle marker points, and a prominent dash style
-                ax.plot(df_future["Predicted_Date"], df_future["Predicted_Sales"], label="AI Daily Forecast", color="#D55E00", linewidth=1.5, linestyle="-")
+                ax.plot(df_future["Predicted_Date"], df_future["Predicted_Sales"], label="AI Daily Forecast", color="#D55E00", linewidth=2.5, linestyle="--")
+                ax.set_title(f"Daily Sales Trend Analysis - From {select_year} onwards", fontsize=11, fontweight="bold")
+            
             elif forecast_type == "Monthly Forecast":
                 df_m = df_daily.groupby(pd.Grouper(key='Display_Date', freq='M'))['Sales'].sum().reset_index()
-                ax.plot(df_m["Display_Date"], df_m["Sales"], label="Historical (Monthly)", color="#0072B2", marker="o", alpha=0.6)
+                ax.plot(df_m["Display_Date"], df_m["Sales"], label="Historical (Monthly)", color="#0072B2", marker="o", alpha=0.6, linewidth=1.5)
                 ax.plot(df_future["Predicted_Date"], df_future["Predicted_Sales"], label="AI Monthly Forecast", color="#D55E00", marker="s", linewidth=3, markersize=6)
+                ax.set_title(f"Monthly Sales Trend Analysis - From {select_year} onwards", fontsize=11, fontweight="bold")
+            
             else:
                 df_y = df_daily.groupby(pd.Grouper(key='Display_Date', freq='Y'))['Sales'].sum().reset_index()
-                ax.plot(df_y["Display_Date"], df_y["Sales"], label="Historical (Yearly)", color="#0072B2", marker="o", alpha=0.6)
+                ax.plot(df_y["Display_Date"], df_y["Sales"], label="Historical (Yearly)", color="#0072B2", marker="o", alpha=0.6, linewidth=1.5)
                 ax.plot(df_future["Predicted_Date"], df_future["Predicted_Sales"], label="AI 15-Year Forecast", color="#D55E00", marker="D", linewidth=3, markersize=6)
+                ax.set_title(f"Yearly Sales Trend Analysis - From {select_year} onwards", fontsize=11, fontweight="bold")
             
-            # Dynamic Padding Adjustment: Keeps the prediction line fully framed in the viewport center
-            current_ymin, current_ymax = ax.get_ylim()
-            max_val_numeric = df_future["Predicted_Sales"].max()
-            if max_val_numeric > current_ymax:
-                ax.set_ylim(bottom=0, top=max_val_numeric * 1.15)
-                
-            ax.set_title(f"Continuous Sales Trend Analysis - From {select_year} onwards", fontsize=11, fontweight="bold")
+            # Auto-adjust both dimensions so predictions are prominent and visible
+            ax.autoscale(enable=True, axis='both', tight=False)
             ax.grid(True, linestyle=":", alpha=0.5)
             ax.legend(loc="upper left")
             st.pyplot(fig)
             plt.close()
+            
         with sub_tab_data:
             st.dataframe(df_future, use_container_width=True)
 
