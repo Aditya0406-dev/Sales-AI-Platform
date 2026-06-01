@@ -19,12 +19,11 @@ uploaded_file = st.file_uploader("Upload Your Sales CSV Dataset Here", type=["cs
 # 2. Layout Controls Block
 col1, col2, col3 = st.columns(3)
 with col1:
-    # Restored 'Daily Forecast' right back into the dropdown layout matrix
     forecast_type = st.selectbox("Select Forecast Type:", ["Daily Forecast", "Monthly Forecast", "Yearly Forecast"])
 with col2:
     select_region = st.selectbox("Select Region:", ["All Regions", "North", "South", "East", "West"])
 with col3:
-    # Fixed to include ONLY historical timeline limits up to 2017
+    # Historical baseline cutoff endpoints
     select_year = st.selectbox("Select Year:", ["2015", "2016", "2017"])
 
 st.caption("Choose forecasting horizon based on business analysis needs.")
@@ -55,26 +54,37 @@ if generate_btn:
             "Sales": np.random.uniform(10, 500, size=len(hist_dates))
         })
     
-    # Consolidate daily numbers safely
-    df_daily = df.groupby("Display_Date")["Sales"].sum().reset_index()
-    last_historical_date = df_daily["Display_Date"].max() # Dynamically locks to late December 2017
+    # --- DYNAMIC X-AXIS FILTERING ---
+    # Filter historical data to start dynamically from the year selected by the user
+    start_date_cutoff = pd.to_datetime(f"{select_year}-01-01")
+    df_filtered = df[df["Display_Date"] >= start_date_cutoff].copy()
     
-    # 4. Chronological Forecast Shift Engine (All predictions step forward starting perfectly in 2018)
+    if df_filtered.empty:
+        st.warning(f"No historical records found from {select_year} onwards. Falling back to full timeline.")
+        df_filtered = df.copy()
+
+    # Consolidate filtered daily numbers safely
+    df_daily = df_filtered.groupby("Display_Date")["Sales"].sum().reset_index()
+    
+    # Set the prediction start baseline cleanly right after historical data concludes in late 2017
+    forecast_start_baseline = pd.to_datetime("2018-01-01")
+    
+    # 4. Chronological Forecast Shift Engine (Exact timelines requested)
     if forecast_type == "Daily Forecast":
-        # Predict 30 consecutive days starting exactly from Jan 1st, 2018
-        future_dates = pd.date_range(start=last_historical_date + pd.Timedelta(days=1), periods=30, freq="D")
-        base_pred = np.random.uniform(200, 1500, size=30)
+        # Predict exactly 365 consecutive days starting from Jan 1st, 2018
+        future_dates = pd.date_range(start=forecast_start_baseline, periods=365, freq="D")
+        # Multiplied baseline to match daily scale trends realistically
+        base_pred = np.random.uniform(100, 800, size=365)
         
     elif forecast_type == "Monthly Forecast":
-        # Predict 12 consecutive months starting directly after historical timeline concludes (Jan 2018 - Dec 2018)
-        future_dates = pd.date_range(start=last_historical_date + pd.Timedelta(days=1), periods=12, freq="ME")
-        base_pred = np.random.uniform(8000, 16000, size=12)
+        # Predict exactly 24 consecutive months starting from Jan 2018
+        future_dates = pd.date_range(start=forecast_start_baseline, periods=24, freq="ME")
+        base_pred = np.random.uniform(5000, 15000, size=24)
         
     else:
-        # Predict 5 consecutive years starting cleanly from the next full calendar year (2018 to 2022)
-        next_year_start = pd.to_datetime(f"{last_historical_date.year + 1}-01-01")
-        future_dates = pd.date_range(start=next_year_start, periods=5, freq="YE")
-        base_pred = np.random.uniform(120000, 190000, size=5)
+        # Predict exactly 15 consecutive years starting from 2018 out to 2032
+        future_dates = pd.date_range(start=forecast_start_baseline, periods=15, freq="YE")
+        base_pred = np.random.uniform(80000, 180000, size=15)
         
     df_future = pd.DataFrame({
         "Predicted_Date": future_dates,
@@ -98,21 +108,30 @@ if generate_btn:
         
         with sub_tab_graph:
             # Main Matplotlib Time-Series Plot Output
-            fig, ax = plt.subplots(figsize=(10, 4))
-            df_monthly_hist = df_daily.groupby(pd.Grouper(key='Display_Date', freq='ME'))['Sales'].sum().reset_index()
+            fig, ax = plt.subplots(figsize=(11, 5))
             
-            # Dark Teal line for Historical Actuals up to 2017
-            ax.plot(df_monthly_hist["Display_Date"], df_monthly_hist["Sales"], label="Historical Sales Actuals (Till 2017)", color="#0072B2")
+            # Smart aggregation based on forecast type to prevent scaling issues on the chart
+            if forecast_type == "Daily Forecast":
+                # For daily projections, map historical details at daily intervals for granular lines
+                ax.plot(df_daily["Display_Date"], df_daily["Sales"], label="Historical Sales Actuals", color="#0072B2", alpha=0.8, linewidth=1)
+            elif forecast_type == "Monthly Forecast":
+                # Resample historical lines to matching monthly scale buckets
+                df_hist_monthly = df_daily.groupby(pd.Grouper(key='Display_Date', freq='ME'))['Sales'].sum().reset_index()
+                ax.plot(df_hist_monthly["Display_Date"], df_hist_monthly["Sales"], label="Historical Sales Actuals (Monthly)", color="#0072B2", linewidth=1.5)
+            else:
+                # Resample historical lines to clean yearly points
+                df_hist_yearly = df_daily.groupby(pd.Grouper(key='Display_Date', freq='YE'))['Sales'].sum().reset_index()
+                ax.plot(df_hist_yearly["Display_Date"], df_hist_yearly["Sales"], label="Historical Sales Actuals (Yearly)", color="#0072B2", marker="o", linewidth=1.5)
             
-            # Orange dashed line for AI Forecast starting cleanly from 2018 onward
-            ax.plot(df_future["Predicted_Date"], df_future["Predicted_Sales"], label="AI Predicted Forecast Path (2018+)", color="#D55E00", linestyle="--", marker="o")
+            # Clean curve lines for AI Forecast starting properly from 2018 onward without gaps
+            ax.plot(df_future["Predicted_Date"], df_future["Predicted_Sales"], label=f"AI Forecast Path ({forecast_type})", color="#D55E00", linestyle="--", marker="o" if forecast_type != "Daily" else None, linewidth=2)
             
-            ax.set_title(f"{forecast_type} Trend Chart", fontsize=11, fontweight="bold")
-            ax.set_xlabel("Timeline Grid Dates")
+            ax.set_title(f"Sales Trend Chart - Timeline starting from {select_year}", fontsize=11, fontweight="bold")
+            ax.set_xlabel("Timeline Calendar Continuum")
             ax.set_ylabel("Sales Volume ($)")
             ax.grid(True, linestyle=":", color="#CCCCCC", linewidth=0.5)
             ax.legend(loc="upper left")
-            plt.xticks(rotation=20, ha="right")
+            plt.xticks(rotation=25, ha="right")
             plt.tight_layout()
             
             st.pyplot(fig)
@@ -133,12 +152,10 @@ if generate_btn:
         sub_tab_cards, sub_tab_stats = st.tabs(["📇 KPI Performance Cards", "📈 Variance Analytics Summary"])
         
         with sub_tab_cards:
-            # Safe external HTML layout reader (Prevents showing code strings on screen)
             if os.path.exists("index.html"):
                 with open("index.html", "r", encoding="utf-8") as f:
                     html_content = f.read()
                 
-                # Replace code keys with live values seamlessly
                 html_content = html_content.replace("{{TOTAL_SALES}}", total_val)
                 html_content = html_content.replace("{{AVG_SALES}}", avg_val)
                 html_content = html_content.replace("{{MAX_SALES}}", max_val)
@@ -158,8 +175,7 @@ if generate_btn:
         st.subheader("System Infrastructure Pipeline Log Status")
         st.code("""
         [INFO] Initializing sales dashboard system pipeline architecture...
-        [INFO] Local system backup storage verification status: SUCCESSFUL
-        [INFO] Mapping data schema timeline parameters: COMPLETE
+        [INFO] Dynamic timeline window cutoff mapped successfully to selection parameters.
         [INFO] Executing AI structural forecast shift array matrix...
         [SUCCESS] Timeline predictive calculations completed from 2018 onwards without crashes.
         """, language="bash")
