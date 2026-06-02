@@ -40,43 +40,51 @@ if generate_btn:
             st.stop()
     else:
         hist_dates = pd.date_range(start="2014-01-01", end="2017-12-31", freq="D")
-        df = pd.DataFrame({"Display_Date": hist_dates, "Sales": np.random.uniform(50, 350, size=len(hist_dates))})
+        df = pd.DataFrame({"Display_Date": hist_dates, "Sales": np.random.exponential(scale=500, size=len(hist_dates))})
     
     df_filtered = df[df["Display_Date"] >= pd.to_datetime(f"{select_year}-01-01")].copy()
     if df_filtered.empty: df_filtered = df.copy()
 
     df_daily = df_filtered.groupby("Display_Date")["Sales"].sum().reset_index()
-    historical_daily_avg = df_daily["Sales"].mean() if not df_daily.empty else 200
+    historical_daily_avg = df_daily["Sales"].mean() if not df_daily.empty else 600
     
     steps = 365 if forecast_type == "Daily Forecast" else (24 if forecast_type == "Monthly Forecast" else 15)
     freq = "D" if forecast_type == "Daily Forecast" else ("M" if forecast_type == "Monthly Forecast" else "Y")
     future_dates = pd.date_range(start="2018-01-01", periods=steps, freq=freq)
 
     base_pred = []
+    is_using_fallback = True
+
     if has_json:
         try:
             with open(JSON_MODEL_PATH, "r") as f: model_data = json.load(f)
             
-            raw_preds = []
-            if isinstance(model_data, list): raw_preds = model_data[:steps]
-            elif "predictions" in model_data: raw_preds = model_data["predictions"][:steps]
-            elif "coefficient" in model_data and "intercept" in model_data:
-                raw_preds = [float(model_data["coefficient"] * x + model_data["intercept"]) for x in range(1, steps + 1)]
-            
-            base_pred = [float(x) for x in raw_preds if x is not None]
-            
-            if len(base_pred) < steps: 
-                base_pred.extend([historical_daily_avg * 1.05] * (steps - len(base_pred)))
+            # Pull the exact forecast array out matching the chosen dropdown
+            if isinstance(model_data, dict):
+                if forecast_type == "Daily Forecast" and "daily_predictions" in model_data:
+                    base_pred = [float(x) for x in model_data["daily_predictions"][:steps]]
+                    is_using_fallback = False
+                elif forecast_type == "Monthly Forecast" and "monthly_predictions" in model_data:
+                    base_pred = [float(x) for x in model_data["monthly_predictions"][:steps]]
+                    is_using_fallback = False
+                elif forecast_type == "Yearly Forecast" and "yearly_predictions" in model_data:
+                    base_pred = [float(x) for x in model_data["yearly_predictions"][:steps]]
+                    is_using_fallback = False
         except Exception: 
             has_json = False
 
-    if not has_json or not base_pred:
-        if forecast_type == "Daily Forecast": base_pred = np.random.uniform(historical_daily_avg * 0.85, historical_daily_avg * 1.15, size=steps).tolist()
-        elif forecast_type == "Monthly Forecast": base_pred = np.random.uniform(historical_daily_avg * 30.4 * 0.9, historical_daily_avg * 30.4 * 1.1, size=steps).tolist()
-        else: base_pred = np.random.uniform(historical_daily_avg * 365.25 * 0.92, historical_daily_avg * 365.25 * 1.08, size=steps).tolist()
+    # Standard fallback generation if reading fails
+    if is_using_fallback or not base_pred:
+        if forecast_type == "Daily Forecast":
+            base_pred = (np.random.normal(historical_daily_avg, historical_daily_avg * 0.3, size=steps)).tolist()
+        elif forecast_type == "Monthly Forecast":
+            base_pred = np.random.uniform(historical_daily_avg * 30.4 * 0.8, historical_daily_avg * 30.4 * 1.2, size=steps).tolist()
+        else:
+            base_pred = np.random.uniform(historical_daily_avg * 365.25 * 0.85, historical_daily_avg * 365.25 * 1.15, size=steps).tolist()
         
     df_future = pd.DataFrame({"Predicted_Date": future_dates, "Predicted_Sales": base_pred})
     df_future["Predicted_Sales"] = pd.to_numeric(df_future["Predicted_Sales"], errors='coerce').fillna(historical_daily_avg)
+    df_future.loc[df_future["Predicted_Sales"] < 0, "Predicted_Sales"] = historical_daily_avg * 0.1
 
     total_val, avg_val, max_val = f"${df_future['Predicted_Sales'].sum():,.2f}", f"${df_future['Predicted_Sales'].mean():,.2f}", f"${df_future['Predicted_Sales'].max():,.2f}"
 
@@ -84,28 +92,33 @@ if generate_btn:
     
     with main_tab1:
         st.subheader("Predictive Modeling Timeline View")
+        
+        if is_using_fallback:
+            st.warning("⚠️ Using auto-scaled fallback engine. Run your training script to export real predictions to JSON.")
+        else:
+            st.success("🎯 Showing active live engine predictions calculated directly by XGBoost.")
+
         sub_tab_graph, sub_tab_data = st.tabs(["📊 Visual Chart", "📋 Predicted Sales Matrix"])
         with sub_tab_graph:
             fig, ax = plt.subplots(figsize=(11, 4.5))
             
             if forecast_type == "Daily Forecast":
-                ax.plot(df_daily["Display_Date"], df_daily["Sales"], label="Historical Sales Actuals", color="#0072B2", alpha=0.5, linewidth=1)
-                ax.plot(df_future["Predicted_Date"], df_future["Predicted_Sales"], label="AI Daily Forecast", color="#D55E00", linewidth=3, linestyle="-")
+                ax.plot(df_daily["Display_Date"], df_daily["Sales"], label="Historical Sales Actuals", color="#0072B2", alpha=0.4, linewidth=1)
+                ax.plot(df_future["Predicted_Date"], df_future["Predicted_Sales"], label="XGBoost Daily Forecast", color="#D55E00", linewidth=2)
                 ax.set_title(f"Daily Sales Trend Analysis - From {select_year} onwards", fontsize=11, fontweight="bold")
             
             elif forecast_type == "Monthly Forecast":
                 df_m = df_daily.groupby(pd.Grouper(key='Display_Date', freq='M'))['Sales'].sum().reset_index()
-                ax.plot(df_m["Display_Date"], df_m["Sales"], label="Historical (Monthly)", color="#0072B2", marker="o", alpha=0.6, linewidth=1.5)
-                ax.plot(df_future["Predicted_Date"], df_future["Predicted_Sales"], label="AI Monthly Forecast", color="#D55E00", marker="s", linewidth=3, markersize=6)
+                ax.plot(df_m["Display_Date"], df_m["Sales"], label="Historical (Monthly)", color="#0072B2", marker="o", alpha=0.5, linewidth=1.5)
+                ax.plot(df_future["Predicted_Date"], df_future["Predicted_Sales"], label="XGBoost Monthly Forecast", color="#D55E00", marker="s", linewidth=2.5, markersize=5)
                 ax.set_title(f"Monthly Sales Trend Analysis - From {select_year} onwards", fontsize=11, fontweight="bold")
             
             else:
                 df_y = df_daily.groupby(pd.Grouper(key='Display_Date', freq='Y'))['Sales'].sum().reset_index()
-                ax.plot(df_y["Display_Date"], df_y["Sales"], label="Historical (Yearly)", color="#0072B2", marker="o", alpha=0.6, linewidth=1.5)
-                ax.plot(df_future["Predicted_Date"], df_future["Predicted_Sales"], label="AI 15-Year Forecast", color="#D55E00", marker="D", linewidth=3, markersize=6)
+                ax.plot(df_y["Display_Date"], df_y["Sales"], label="Historical (Yearly)", color="#0072B2", marker="o", alpha=0.5, linewidth=1.5)
+                ax.plot(df_future["Predicted_Date"], df_future["Predicted_Sales"], label="XGBoost 15-Year Forecast", color="#D55E00", marker="D", linewidth=2.5, markersize=5)
                 ax.set_title(f"Yearly Sales Trend Analysis - From {select_year} onwards", fontsize=11, fontweight="bold")
             
-            # Auto-adjust both dimensions so predictions are prominent and visible
             ax.autoscale(enable=True, axis='both', tight=False)
             ax.grid(True, linestyle=":", alpha=0.5)
             ax.legend(loc="upper left")
