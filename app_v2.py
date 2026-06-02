@@ -16,7 +16,7 @@ with st.sidebar:
         st.warning(f"⚠️ {JSON_MODEL_PATH} missing. Using fallback engine.")
     st.info("Deployment: GitHub Main Branch")
 
-st.title("📊 Workspace Dashboard: AI Engine Hub")
+st.title("📊 Workspace Dashboard: Sales AI Engine Hub")
 uploaded_file = st.file_uploader("Upload Your Sales CSV Dataset Here", type=["csv"])
 
 col1, col2, col3 = st.columns(3)
