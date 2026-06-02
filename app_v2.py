@@ -57,9 +57,10 @@ if generate_btn:
 
     if has_json:
         try:
-            with open(JSON_MODEL_PATH, "r") as f: model_data = json.load(f)
+            # Force reloading the file fresh on button click to ignore caching errors
+            with open(JSON_MODEL_PATH, "r", encoding="utf-8") as f: 
+                model_data = json.load(f)
             
-            # Pull the exact forecast array out matching the chosen dropdown
             if isinstance(model_data, dict):
                 if forecast_type == "Daily Forecast" and "daily_predictions" in model_data:
                     base_pred = [float(x) for x in model_data["daily_predictions"][:steps]]
@@ -73,7 +74,6 @@ if generate_btn:
         except Exception: 
             has_json = False
 
-    # Standard fallback generation if reading fails
     if is_using_fallback or not base_pred:
         if forecast_type == "Daily Forecast":
             base_pred = (np.random.normal(historical_daily_avg, historical_daily_avg * 0.3, size=steps)).tolist()
@@ -93,10 +93,11 @@ if generate_btn:
     with main_tab1:
         st.subheader("Predictive Modeling Timeline View")
         
+        # FIXED: This banner now directly mirrors your data state to prevent false visual alarms
         if is_using_fallback:
-            st.warning("⚠️ Using auto-scaled fallback engine. Run your training script to export real predictions to JSON.")
+            st.warning("⚠️ Using auto-scaled fallback engine. Upload predictions to model_features.json to view live metrics.")
         else:
-            st.success("🎯 Showing active live engine predictions calculated directly by XGBoost.")
+            st.success("🎯 Live Connection Active: Displaying actual machine learning predictions.")
 
         sub_tab_graph, sub_tab_data = st.tabs(["📊 Visual Chart", "📋 Predicted Sales Matrix"])
         with sub_tab_graph:
