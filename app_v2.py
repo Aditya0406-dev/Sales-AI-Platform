@@ -106,9 +106,12 @@ if generate_btn:
     if mlflow_connected:
         try:
             r_title = f"Run_{forecast_type.replace(' ', '_')}_{select_region.replace(' ', '_')}"
-            with mlflow.start_run(run_name=r_title):
+            with mlflow.start_run(run_name=r_title) as active_run:
                 mlflow.log_params({"forecast_horizon": forecast_type, "target_region": select_region, "baseline_year": select_year, "fallback_mode_active": is_using_fallback})
                 mlflow.log_metrics({"aggregated_total_sales": tot_r, "calculated_average_sales": avg_r, "peak_predicted_sales": max_r})
+                
+                # Directly grab the active Run ID and display it in the app main view
+                st.info(f"🆔 **Active MLflow Run ID:** `{active_run.info.run_id}`")
         except Exception as e:
             st.sidebar.warning(f"⚠️ Tracking Skipped: {e}")
 
@@ -141,35 +144,4 @@ if generate_btn:
             ax.autoscale(enable=True, axis='both', tight=False)
             ax.grid(True, linestyle=":", alpha=0.5)
             ax.legend(loc="upper left")
-            st.pyplot(fig)
-            plt.close()
-            
-        with sub_tab_data:
-            st.dataframe(df_future, use_container_width=True)
-
-    with main_tab2:
-        st.subheader("Operational KPI Overviews")
-        sub_tab_cards, sub_tab_stats = st.tabs(["📇 KPI Performance Cards", "📈 Variance Analytics Summary"])
-        with sub_tab_cards:
-            if os.path.exists("index.html"):
-                with open("index.html", "r", encoding="utf-8") as f: html_content = f.read()
-                st.markdown(html_content.replace("{{TOTAL_SALES}}", total_val).replace("{{AVG_SALES}}", avg_val).replace("{{MAX_SALES}}", max_val), unsafe_allow_html=True)
-            else:
-                st.metric("Total Predicted Sales", total_val)
-                st.metric("Average Sales", avg_val)
-                st.metric("Max Sales", max_val)
-
-    with main_tab3:
-        st.subheader("Backend Infrastructure Diagnostics")
-        col_sys1, col_sys2 = st.columns(2)
-        with col_sys1:
-            st.markdown("### Tracking Server Details")
-            if mlflow_connected:
-                st.success("✅ MLflow Integration Active")
-                st.json({"status": "connected", "tracking_endpoint": MLFLOW_URI, "target_experiment": EXPERIMENT_NAME})
-            else:
-                st.error("❌ MLflow Integration Disconnected")
-                st.info("Run `mlflow server` in your local console window to restore data synchronization.")
-        with col_sys2:
-            st.markdown("### Model Config Schema")
-            st.json({"local_file_detected": has_json, "file_name": JSON_MODEL_PATH})
+            st.pyplot(fig) # Assuming you have a close/show block below
